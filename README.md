@@ -95,6 +95,23 @@ fn main() {
 
 Please refer to the [example](example) for a simple HTTP monitoring tool.
 
+## Error codes
+
+- `beeper/src/lib.rs`: `Error::code()` returns a stable code for each library error, and formatted errors include that code.
+- `README.md`: The table below explains each code and how to resolve it.
+
+Code | Meaning | Suggested resolution
+---- | ------- | --------------------
+`BEEPER_001` | Too many distinct fields or patterns were configured for one parser. | Reduce the number of captures; the error message gives the limit.
+`BEEPER_002` | An HTTP/2 header name cannot be HPACK Huffman encoded. | Use a valid ASCII header name; inspect the underlying encoder error.
+`BEEPER_003` | The configured patterns exceed the BPF parser's state or action capacity. | Simplify the patterns or capture fewer fields, then rebuild the parser.
+`BEEPER_004` | A BPF load, attach, or map operation failed. | Inspect the underlying libbpf error and verifier log; check kernel support, permissions, the target program, and map capacity as appropriate to the failed operation.
+`BEEPER_005` | A value read from a parser map has an unexpected layout. | Check that the BPF program and Rust library were built from matching versions; rebuild them together. If it persists, report the map value and library version.
+
+These codes identify Rust `beeper::Error` variants. For `BEEPER_002` and
+`BEEPER_004`, inspect the underlying error source for the specific cause. They
+are not HTTP status codes or the integer results returned inside an eBPF program.
+
 ## Build
 
 To build and test beeper, you need to install the following packages:

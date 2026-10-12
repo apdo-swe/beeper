@@ -66,6 +66,9 @@ pub enum MessageBuffer {
 }
 
 /// The ways a parser can fail.
+///
+/// Use [`Error::code`] for a stable identifier suitable for logs and error
+/// handling. The displayed message includes the same code.
 #[derive(Debug)]
 pub enum Error {
     /// The parser is already configured with as many captures as the parser
@@ -87,6 +90,23 @@ pub enum Error {
     /// An entry read back from one of the parser's maps is not laid out the
     /// way the parser program writes it.
     MalformedTableEntry(plain::Error),
+}
+
+impl Error {
+    /// Returns a stable code for this kind of error.
+    ///
+    /// The codes and suggested resolutions are documented in the project
+    /// README. The underlying [`Error::Bpf`] cause remains available through
+    /// [`std::error::Error::source`] for more specific diagnostics.
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Error::MatchLimitExceeded(_) => "BEEPER_001",
+            Error::InvalidEncoding(_) => "BEEPER_002",
+            Error::ParserExceedsStateLimit => "BEEPER_003",
+            Error::Bpf(_) => "BEEPER_004",
+            Error::MalformedTableEntry(_) => "BEEPER_005",
+        }
+    }
 }
 
 impl std::error::Error for Error {
@@ -121,6 +141,7 @@ impl From<plain::Error> for Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: ", self.code())?;
         match self {
             Error::MatchLimitExceeded(limit) => {
                 write!(f, "a parser captures at most {limit} ranges")
@@ -131,7 +152,7 @@ impl Display for Error {
             Error::ParserExceedsStateLimit => {
                 write!(f, "the patterns do not fit into the parser program")
             }
-            Error::Bpf(err) => write!(f, "the parser program cannot be loaded: {err}"),
+            Error::Bpf(err) => write!(f, "BPF operation failed: {err}"),
             Error::MalformedTableEntry(err) => {
                 write!(f, "the parser wrote a table entry back malformed: {err:?}")
             }
