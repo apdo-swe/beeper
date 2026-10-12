@@ -24,8 +24,8 @@ extern crate plain;
 /// sync with `MAX_MATCHES` of beeper/beeper.h.
 const MAX_MATCHES: u8 = 32;
 
-/// The index the first entry of a dynamic table is stored under. It is loaded
-/// into `DYNAMIC_TABLE_BASE` of http2/parser.bpf.c.
+/// The index the first entry of a dynamic table is stored under. Must stay in
+/// sync with `DYNAMIC_TABLE_BASE` of http2/parser.bpf.c.
 const DYNAMIC_TABLE_BASE: u32 = 62;
 
 /// A parser for HTTP/2 messages.
@@ -395,28 +395,6 @@ impl Parser {
     /// Returns an error if the DFA exceeds the eBPF limits on the number
     /// of states, edges, or actions.
     fn inject(&self, skel: &mut OpenParserSkel) -> Result<(), Error> {
-        load_rodata!(
-            skel,
-            DYNAMIC_TABLE_BASE,
-            S_DEAD = S_DEAD.0,
-            S_FIELD = S_FIELD.0,
-            S_VAL_LEN = S_VAL_LEN.0,
-            S_NAME = S_NAME.0,
-            HTTP2A_INDEXED = Kind::Indexed as u8,
-            HTTP2A_IDX_NAME = Kind::IdxName as u8,
-            HTTP2A_LIT_NAME = Kind::LitName as u8,
-            HTTP2A_KEY_LEN = Kind::KeyLen as u8,
-            HTTP2A_VAL_LEN = Kind::ValLen as u8,
-            HTTP2A_TABLE_SIZE = Kind::TableSize as u8,
-            HTTP2A_INT_START = Kind::IntStart as u8,
-            HTTP2A_INT_CONT = Kind::IntCont as u8,
-            HTTP2A_CAPTURE = Kind::Capture as u8,
-            HTTP2A_ERR = Kind::Err as u8,
-            HTTP2F_HUFF = F_HUFF,
-            HTTP2F_ADD_DT = F_ADD_DT,
-            HTTP2F_CONT = F_CONT,
-        );
-
         let Some(data) = skel.maps.rodata_data.as_mut() else {
             panic!("the parser program has no read-only data to inject into");
         };

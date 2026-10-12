@@ -3,6 +3,8 @@
 //! The actions reside on the edge of the DFA and are executed by the eBPF
 //! runtime when it consumes the input associated with that edge.
 //!
+//! The state ids and action kinds below must stay in sync with the `S_*` and
+//! `HTTP2A_*` constants of http2/parser.bpf.c.
 
 use crate::{MatchId, StateId, http2::parser::types::http2_action};
 

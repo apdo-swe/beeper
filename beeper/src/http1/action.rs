@@ -3,6 +3,8 @@
 //! The actions reside on the edge of the DFA and are executed by the eBPF
 //! runtime when it consumes the input associated with that edge.
 //!
+//! The kinds and flags below must stay in sync with the `HTTP1A_*` and `HTTP1F_*`
+//! constants of http1/parser.bpf.c.
 
 use crate::{MatchId, http1::parser::types::http1_action};
 
@@ -10,13 +12,13 @@ use crate::{MatchId, http1::parser::types::http1_action};
 const HTTP1A_NONE: u8 = 0;
 
 /// Start capturing with the next byte.
-pub(super) const HTTP1A_START_CAPTURE: u8 = 1;
+const HTTP1A_START_CAPTURE: u8 = 1;
 
 /// End capturing with the next byte.
-pub(super) const HTTP1A_END_CAPTURE: u8 = 2;
+const HTTP1A_END_CAPTURE: u8 = 2;
 
 /// Terminate parsing and skipping the remainder of the message.
-pub(super) const HTTP1F_DONE: u8 = 1 << 0;
+const HTTP1F_DONE: u8 = 1 << 0;
 
 /// The DFA actions for [`http1::Parser`], wrapped for convenience
 /// in an enum for usage in [`Dfa`].

@@ -10,9 +10,8 @@
 // The number of entries of the HPACK static table.
 #define STATIC_TABLE_SIZE 61
 
-// The index the first entry of a dynamic table is stored under. User space
-// defines it in http2/parser.rs and loads it before the program is loaded.
-volatile const u32 DYNAMIC_TABLE_BASE;
+/// The index the first entry of a dynamic table is stored under.
+#define DYNAMIC_TABLE_BASE (STATIC_TABLE_SIZE + 1)
 
 // The identifier of the SETTINGS parameter announcing the size of the dynamic
 // table.
@@ -93,30 +92,79 @@ struct {
 	__type(value, struct dynamic_table_info);
 } dynamic_table_info SEC(".maps");
 
-// The state ids, action kinds and flags. User space defines them in
-// http2/action.rs and loads them before the program is loaded.
-volatile const u16 S_DEAD;
-volatile const u16 S_FIELD;
-volatile const u16 S_VAL_LEN;
-volatile const u16 S_NAME;
+// A field name that matched no pattern. It carries no transition of its own, so
+// the parser stays in it until the name it is reading ends.
+#define S_DEAD 2
+
+// At the first byte of a field representation.
+#define S_FIELD 3
+
+// At the first byte of the length of a field name, respectively of a value.
+#define S_KEY_LEN 4
+#define S_VAL_LEN 5
+
+// The root of the trie of the field names to capture.
+#define S_NAME 6
+
+// The continuation of a variable-length integer that did not fit.
+#define S_IDX7_CONT 7
+#define S_IDX6_CONT 8
+#define S_IDX4_CONT 9
+#define S_STG_CONT 10
+#define S_KEY_LEN_CONT 11
+#define S_KEY_LEN_CONT_HUFF 12
+#define S_VAL_LEN_CONT 13
+#define S_VAL_LEN_CONT_HUFF 14
+
+// The number of state ids the ones above reserve.
+#define S_RESERVED 15
 
 // Nothing.
 #define HTTP2A_NONE 0
 
-volatile const u8 HTTP2A_INDEXED;
-volatile const u8 HTTP2A_IDX_NAME;
-volatile const u8 HTTP2A_LIT_NAME;
-volatile const u8 HTTP2A_KEY_LEN;
-volatile const u8 HTTP2A_VAL_LEN;
-volatile const u8 HTTP2A_TABLE_SIZE;
-volatile const u8 HTTP2A_INT_START;
-volatile const u8 HTTP2A_INT_CONT;
-volatile const u8 HTTP2A_CAPTURE;
-volatile const u8 HTTP2A_ERR;
+// A field spelled out by nothing but an index: `val` addresses the entry of the
+// static or the dynamic table both its name and its value are read from.
+#define HTTP2A_INDEXED 1
 
-volatile const u8 HTTP2F_HUFF;
-volatile const u8 HTTP2F_ADD_DT;
-volatile const u8 HTTP2F_CONT;
+// A field whose name is an index and whose value is spelled out: `val`
+// addresses the entry the name is read from.
+#define HTTP2A_IDX_NAME 2
+
+// A field whose name is spelled out as well.
+#define HTTP2A_LIT_NAME 3
+
+// The length of a field name, respectively of a value: `val` counts the bytes
+// it occupies on the wire.
+#define HTTP2A_KEY_LEN 4
+#define HTTP2A_VAL_LEN 5
+
+// A dynamic table size update: `val` is the size the peer resizes to.
+#define HTTP2A_TABLE_SIZE 6
+
+// The first byte of an integer that does not fit into the prefix of that byte:
+// `val` is the prefix maximum the integer is counted from.
+#define HTTP2A_INT_START 7
+
+// A byte of such an integer that is not its last one either.
+#define HTTP2A_INT_CONT 8
+
+// The name of the field being read just matched a pattern, `val` being the id
+// its value is to be captured under.
+#define HTTP2A_CAPTURE 9
+
+// The representation is malformed. There is no telling where the next field
+// starts, so the rest of the block is dropped.
+#define HTTP2A_ERR 10
+
+// The string the action describes is Huffman coded.
+#define HTTP2F_HUFF (1 << 0)
+
+// The field the action describes is added to the dynamic table.
+#define HTTP2F_ADD_DT (1 << 1)
+
+// The integer the action describes is spread over several bytes, so it is to be
+// read out of the accumulator rather than out of `val`.
+#define HTTP2F_CONT (1 << 2)
 
 // A single action of the DFA. `val` is an index, a length or a table size,
 // depending on `kind`.

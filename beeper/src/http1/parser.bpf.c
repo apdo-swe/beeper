@@ -9,11 +9,17 @@ const u16 s_init = 0;
 // The fallback state, to which all edges lead to if no input matched.
 const u16 s_any = 1;
 
-// The action kinds and flags. User space defines them in http1/action.rs and
-// loads them before the program is loaded.
-volatile const u8 HTTP1A_START_CAPTURE;
-volatile const u8 HTTP1A_END_CAPTURE;
-volatile const u8 HTTP1F_DONE;
+// No-op action.
+#define HTTP1A_NONE 0
+
+/// Start capturing with the next byte.
+#define HTTP1A_START_CAPTURE 1
+
+/// End capturing with the next byte.
+#define HTTP1A_END_CAPTURE 2
+
+/// Terminate parsing and skipping the remainder of the message.
+#define HTTP1F_DONE (1 << 0)
 
 // A single action of the DFA.
 struct http1_action {
