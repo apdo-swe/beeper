@@ -32,7 +32,7 @@ struct http_parse_res {
 #define BEEPER_GET_MATCH_MSG(name)                                                             \
     __noinline int name(const struct sk_msg_md *msg, const struct http_parse_res *pres __arg_nonnull,   \
                         u8 idx, struct bytes *str __arg_nonnull) {                                 \
-        int ret = -1;                                                                              \
+        int ret = -ENOENT;                                                                         \
                                                                                                    \
         __sink(msg);                                                                               \
         __sink(pres);                                                                              \
@@ -47,7 +47,7 @@ struct http_parse_res {
 #define BEEPER_GET_MATCH_SKB(name)                                                             \
     __noinline int name(const struct __sk_buff *skb, const struct http_parse_res *pres __arg_nonnull,   \
                         u8 idx, struct bytes *str __arg_nonnull) {                                 \
-        int ret = -1;                                                                              \
+        int ret = -ENOENT;                                                                         \
                                                                                                    \
         __sink(skb);                                                                               \
         __sink(pres);                                                                              \

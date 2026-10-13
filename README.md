@@ -97,8 +97,7 @@ Please refer to the [example](example) for a simple HTTP monitoring tool.
 
 ## Error codes
 
-- `beeper/src/lib.rs`: `Error::code()` returns a stable code for each library error, and formatted errors include that code.
-- `README.md`: The table below explains each code and how to resolve it.
+The Rust API uses `Error::code()` for stable `BEEPER_00x` identifiers:
 
 Code | Meaning | Suggested resolution
 ---- | ------- | --------------------
@@ -111,6 +110,43 @@ Code | Meaning | Suggested resolution
 These codes identify Rust `beeper::Error` variants. For `BEEPER_002` and
 `BEEPER_004`, inspect the underlying error source for the specific cause. They
 are not HTTP status codes or the integer results returned inside an eBPF program.
+
+### eBPF parser returns
+
+The C parsers use negative Linux errno values from `<asm-generic/errno.h>` (the
+kernel counterpart of user space `<errno.h>`). A positive parse result is the
+number of bytes in the HTTP/1 header block or HTTP/2 frame. `0` means a
+successful `get_match` or dynamic table lookup. Handle the following results
+from a parser before using its output or calling `bpf_msg_apply_bytes`:
+
+Return | Meaning | Client action
+------ | ------- | -------------
+`-EAGAIN` | The current buffer does not yet contain a complete header block or frame. | In `sk_msg`, call `bpf_msg_cork_bytes` for more bytes and return `SK_PASS`; cap the amount you are willing to buffer. For `sk_skb`, retain/reassemble the data elsewhere or pass it without parsing.
+`-EINVAL` | An HTTP/2 frame is malformed. | Apply the application's invalid-message policy; do not cork waiting for more bytes.
+`-E2BIG` | The input exceeds the parser's `MAX_BYTES` limit. | Pass, reject, or send to a slower parser; do not keep corking.
+`-EIO` | The BPF helper could not make available data readable. | Pass or reject the message and record the failure; retrying with more bytes is unlikely to help.
+
+`get_match` returns `-EINVAL` for an invalid match ID, `-ENOENT` when the
+configured field was not captured, and `-EFAULT` if captured bytes are no
+longer accessible. HTTP/2 dynamic table lookup returns `-ENOENT` when the
+entry is absent. Do not dereference the output of a failed lookup.
+
+For example, a socket verdict program that expects another byte before it can
+parse can cork that connection:
+
+```c
+int len = parse_http1(msg, &pres);
+if (len == -EAGAIN) {
+    if (msg->size >= MAX_BYTES) return SK_PASS;
+    bpf_msg_cork_bytes(msg, msg->size + 1);
+    return SK_PASS;
+}
+if (len < 0) return SK_PASS; // or apply your rejection policy
+bpf_msg_apply_bytes(msg, len);
+```
+
+The monitoring example passes incomplete input through instead of corking it,
+because it also receives message bodies, which are not HTTP headers.
 
 ## Build
 

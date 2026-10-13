@@ -6,7 +6,7 @@
 // Declares a stub for the parse function for SK_MSG.
 #define BEEPER_HTTP1_PARSE_MSG(name)                                                               \
     __noinline int name(struct sk_msg_md *msg, struct http_parse_res *pres __arg_nonnull) {        \
-        int ret = -1;                                                                              \
+        int ret = -EIO;                                                                            \
                                                                                                    \
         __sink(msg);                                                                               \
         __sink(pres);                                                                              \
@@ -21,7 +21,7 @@
 #define BEEPER_HTTP1_PARSE_SKB(name)                                                               \
     __noinline int name(struct __sk_buff *skb, u32 off, struct http_parse_res *pres __arg_nonnull, \
                         struct null_prefix *null_prefix) {                                         \
-        int ret = -1;                                                                              \
+        int ret = -EIO;                                                                            \
                                                                                                    \
         __sink(skb);                                                                               \
         __sink(off);                                                                               \
@@ -39,7 +39,7 @@
     __noinline int name(const struct bpf_dynptr *buf_ptr, u32 len,                                 \
                         struct http_parse_res *pres __arg_nonnull,                                 \
                         struct null_prefix *null_prefix) {                                         \
-        int ret = -1;                                                                              \
+        int ret = -EIO;                                                                            \
                                                                                                    \
         __sink(buf_ptr);                                                                           \
         __sink(len);                                                                               \

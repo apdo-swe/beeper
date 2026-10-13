@@ -128,8 +128,8 @@ static __always_inline int _parse_from(u8 *data, u8 *data_end, u16 start, struct
 // not done by the end of it, the whole message is pulled in and parsing resumes
 // where it stopped.
 //
-// Returns the number of bytes the header block occupies, or a negative value if
-// the message ended before the header block did.
+// Returns the header length, -EAGAIN if more bytes are needed, or -EIO if
+// pulling the available bytes into the linear region fails.
 SEC("freplace")
 int parse_msg(struct sk_msg_md *msg, struct http_parse_res *pres __arg_nonnull) {
     u32 cidx[MAX_MATCHES] = { 0 };
@@ -138,10 +138,8 @@ int parse_msg(struct sk_msg_md *msg, struct http_parse_res *pres __arg_nonnull) 
     u8 *data_end = (u8 *)(long)msg->data_end;
     int res = _parse_from(data, data_end, 0, pres->ms, cidx, &s, NULL);
 
-    if (res < 0 && msg->size > -res) {
-        if (bpf_msg_pull_data(msg, 0, msg->size, 0) < 0) {
-            return res;
-        }
+    if (res <= 0 && msg->size > -res) {
+        if (bpf_msg_pull_data(msg, 0, msg->size, 0) < 0) return -EIO;
 
         u8 *data = (u8 *)(long)msg->data;
         u8 *data_end = (u8 *)(long)msg->data_end;
@@ -149,7 +147,8 @@ int parse_msg(struct sk_msg_md *msg, struct http_parse_res *pres __arg_nonnull) 
         res = _parse_from(data, data_end, -res, pres->ms, cidx, &s, NULL);
     }
 
-    return res;
+    if (res > 0) return res;
+    return msg->size >= MAX_BYTES ? -E2BIG : -EAGAIN;
 }
 
 // Parses the header block of the message that starts `off` bytes into the
@@ -158,12 +157,13 @@ int parse_msg(struct sk_msg_md *msg, struct http_parse_res *pres __arg_nonnull) 
 // `parse_msg` for the return value.
 SEC("freplace")
 int parse_skb(struct __sk_buff *skb, u32 off, struct http_parse_res *pres __arg_nonnull, struct null_prefix *null_prefix) {
-    if (off >= MAX_BYTES || off >= skb->len) return 0;
+    if (off >= MAX_BYTES) return -E2BIG;
+    if (off >= skb->len) return -EAGAIN;
 
     u8 *data = (u8 *)(long)skb->data;
     u8 *data_end = (u8 *)(long)skb->data_end;
     if (data + skb->len > data_end) {
-        if (bpf_skb_pull_data(skb, skb->len) < 0) return -1;
+        if (bpf_skb_pull_data(skb, skb->len) < 0) return -EIO;
 
         data = (u8 *)(long)skb->data;
         data_end = (u8 *)(long)skb->data_end;
@@ -173,7 +173,8 @@ int parse_skb(struct __sk_buff *skb, u32 off, struct http_parse_res *pres __arg_
     u16 s = s_init;
     int res = _parse_from(data, data_end, off, pres->ms, cidx, &s, null_prefix);
 
-    return res > 0 ? res - (int)off : res + (int)off;
+    if (res > 0) return res - (int)off;
+    return skb->len >= MAX_BYTES ? -E2BIG : -EAGAIN;
 }
 
 // Returns whether the parser captured a range for the match `idx`.
@@ -188,19 +189,19 @@ bool matched(const struct http_parse_res *pres __arg_nonnull, u8 idx) {
 // Points `str` at the range captured for the match `idx`. The range points into
 // `msg`, so it is only valid until the program invalidates its data pointers.
 //
-// Returns 0 on success, -1 if nothing was captured for `idx` or if the range
-// lies outside of the part of the message the program can read.
+// Returns 0 on success, -EINVAL for an invalid match ID, -ENOENT when no
+// value was captured, or -EFAULT if the range is no longer accessible.
 SEC("freplace")
 int get_match_msg(const struct sk_msg_md *msg, const struct http_parse_res *pres __arg_nonnull, u8 idx, struct bytes* str __arg_nonnull) {
-    if (idx >= MAX_MATCHES) return -1;
+    if (idx >= MAX_MATCHES) return -EINVAL;
 
     struct http_match m = pres->ms[idx & MAX_MATCH_MASK];
-    if (m.len == 0) return -1;
+    if (m.len == 0) return -ENOENT;
 
     u8 *data = (u8 *)(long)msg->data;
     u8 *data_end = (u8 *)(long)msg->data_end;
 
-    if (data + m.idx + m.len > data_end) return -1;
+    if (data + m.idx + m.len > data_end) return -EFAULT;
 
     str->ptr = data + m.idx;
     str->len = m.len;
@@ -213,15 +214,15 @@ int get_match_msg(const struct sk_msg_md *msg, const struct http_parse_res *pres
 // pointers.
 SEC("freplace")
 int get_match_skb(const struct __sk_buff *skb, const struct http_parse_res *pres __arg_nonnull, u8 idx, struct bytes* str __arg_nonnull) {
-    if (idx >= MAX_MATCHES) return -1;
+    if (idx >= MAX_MATCHES) return -EINVAL;
 
     struct http_match m = pres->ms[idx & MAX_MATCH_MASK];
-    if (m.len == 0) return -1;
+    if (m.len == 0) return -ENOENT;
 
     u8 *data = (u8 *)(long)skb->data;
     u8 *data_end = (u8 *)(long)skb->data_end;
 
-    if (data + m.idx + m.len > data_end) return -1;
+    if (data + m.idx + m.len > data_end) return -EFAULT;
 
     str->ptr = data + m.idx;
     str->len = m.len;
