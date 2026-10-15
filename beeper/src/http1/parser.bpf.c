@@ -125,8 +125,8 @@ static __always_inline int _parse_from(u8 *data, u8 *data_end, u16 start, struct
 
 // Parses the header block of the message and reports what it captured in
 // `pres`. Only the linear part of the message is parsed at first; if the DFA is
-// not done by the end of it, the whole message is pulled in and parsing resumes
-// where it stopped.
+// not done by the end of it, up to MAX_BYTES of the message is pulled in and
+// parsing resumes where it stopped.
 //
 // Returns the header length, -EAGAIN if more bytes are needed, or -EIO if
 // pulling the available bytes into the linear region fails.
@@ -139,7 +139,9 @@ int parse_msg(struct sk_msg_md *msg, struct http_parse_res *pres __arg_nonnull) 
     int res = _parse_from(data, data_end, 0, pres->ms, cidx, &s, NULL);
 
     if (res <= 0 && msg->size > -res) {
-        if (bpf_msg_pull_data(msg, 0, msg->size, 0) < 0) return -EIO;
+        u32 pull_len = msg->size;
+        bpf_clamp_uminmax(pull_len, 0, MAX_BYTES);
+        if (bpf_msg_pull_data(msg, 0, pull_len, 0) < 0) return -EIO;
 
         u8 *data = (u8 *)(long)msg->data;
         u8 *data_end = (u8 *)(long)msg->data_end;
@@ -162,8 +164,10 @@ int parse_skb(struct __sk_buff *skb, u32 off, struct http_parse_res *pres __arg_
 
     u8 *data = (u8 *)(long)skb->data;
     u8 *data_end = (u8 *)(long)skb->data_end;
-    if (data + skb->len > data_end) {
-        if (bpf_skb_pull_data(skb, skb->len) < 0) return -EIO;
+    u32 pull_len = skb->len;
+    bpf_clamp_uminmax(pull_len, 0, MAX_BYTES);
+    if (data + pull_len > data_end) {
+        if (bpf_skb_pull_data(skb, pull_len) < 0) return -EIO;
 
         data = (u8 *)(long)skb->data;
         data_end = (u8 *)(long)skb->data_end;

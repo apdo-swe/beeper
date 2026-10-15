@@ -158,23 +158,30 @@ int msg_verdict(struct sk_msg_md *msg) {
     }
     else {
         msg_len = parse_http1_msg(msg, &pres);
-        if (msg_len < 0) {
+        if (msg_len == -E2BIG) {
+            // The header block ran past the scan limit, but captures completed
+            // before that limit remain observable for this test program.
+            // A real client must still treat the parse as failed.
+            store_matches = true;
+        }
+        else if (msg_len < 0) {
             // It's possible that this fails because we're actually parsing the body.
             // To avoid this, we'd have to parse the content-length to skip the body.
             // Consult the example to see how to do this.
             return SK_PASS;
         }
+        else {
+            if (matched_http1(&pres, 0)) {
+                int flag = 1;
+                bpf_map_update_elem(&upgraded_conns, &ikey, &flag, BPF_ANY);
+                num_upgraded_conns += 1;
+            }
 
-        if (matched_http1(&pres, 0)) {
-            int flag = 1;
-            bpf_map_update_elem(&upgraded_conns, &ikey, &flag, BPF_ANY);
-            num_upgraded_conns += 1;
+            store_matches = true;
         }
-
-        store_matches = true;
     }
 
-    // only store matches if we parsed a HEADER frame
+    // Store completed captures from parsed frames and oversized HTTP/1 headers.
     if (store_matches) {
         store_matched(&pres, is_h2);
 
@@ -186,8 +193,10 @@ int msg_verdict(struct sk_msg_md *msg) {
         }
     }
 
-    bpf_debug("Apply verdict to %d/%dB", msg_len, msg->size);
-    bpf_msg_apply_bytes(msg, msg_len);
+    if (msg_len > 0) {
+        bpf_debug("Apply verdict to %d/%dB", msg_len, msg->size);
+        bpf_msg_apply_bytes(msg, msg_len);
+    }
 
     return SK_PASS;
 }

@@ -122,9 +122,9 @@ from a parser before using its output or calling `bpf_msg_apply_bytes`:
 Return | Meaning | Client action
 ------ | ------- | -------------
 `-EAGAIN` | The current buffer does not yet contain a complete header block or frame. | In `sk_msg`, call `bpf_msg_cork_bytes` for more bytes and return `SK_PASS`; cap the amount you are willing to buffer. For `sk_skb`, retain/reassemble the data elsewhere or pass it without parsing.
-`-EINVAL` | An HTTP/2 frame is malformed. | Apply the application's invalid-message policy; do not cork waiting for more bytes.
-`-E2BIG` | The input exceeds the parser's `MAX_BYTES` limit. | Pass, reject, or send to a slower parser; do not keep corking.
-`-EIO` | The BPF helper could not make available data readable. | Pass or reject the message and record the failure; retrying with more bytes is unlikely to help.
+`-EINVAL` | An HTTP/2 frame or header block is malformed. | Apply the application's invalid-message policy; do not cork waiting for more bytes.
+`-E2BIG` | The HTTP/1 header block or parsed HTTP/2 frame exceeds the parser's `MAX_BYTES` limit. | Pass, reject, or send to a slower parser; do not keep corking.
+`-EIO` | A BPF helper could not make data readable, or the parser's HTTP/2 dynamic table is unusable. | Pass or reject the message and record the failure; retrying with more bytes is unlikely to help.
 
 `get_match` returns `-EINVAL` for an invalid match ID, `-ENOENT` when the
 configured field was not captured, and `-EFAULT` if captured bytes are no

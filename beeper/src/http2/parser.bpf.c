@@ -651,7 +651,7 @@ static __always_inline struct http2_parse_state _new_http2_parse_state(void) {
 
 // Runs the action of the edges `ps` holds.
 //
-// Returns 0, or -1 if the block cannot be read any further.
+// Returns 0, or a negative errno if the block cannot be read any further.
 __noinline __weak int _run_action(const struct msg_ctx *ctx __arg_nonnull, struct dynamic_table_info *dt_info __arg_nonnull, struct http_parse_res *pres __arg_nonnull, struct http2_parse_state *ps __arg_nonnull) {
     u32 v = ps->v & MAX_BYTES;
 
@@ -772,7 +772,8 @@ __noinline __weak int _run_action(const struct msg_ctx *ctx __arg_nonnull, struc
 // Decodes the header block between the offsets `start` and `end` and records
 // the values of the fields whose name matches a pattern in `pres`.
 //
-// Returns the offset it stopped at, which is `end` if the whole block was read.
+// Returns the offset it stopped at, which is `end` if the whole block was read,
+// or a negative errno if an action failed.
 static __always_inline int _parse_hdr_from(const struct msg_ctx *ctx, u16 start, u16 end, struct dynamic_table_info *dt_info, struct http2_parse_state *ps, struct http_parse_res *pres, struct null_prefix *null_prefix) {
     const u8 *data = ctx->data;
     const u8 *data_end = ctx->data_end;
@@ -839,7 +840,8 @@ static __always_inline int _parse_hdr_from(const struct msg_ctx *ctx, u16 start,
         ps->kind = act.kind;
         ps->flags = act.flags;
 
-        if (_run_action(ctx, dt_info, pres, ps) < 0) break;
+        int action_res = _run_action(ctx, dt_info, pres, ps);
+        if (action_res < 0) return action_res;
     }
 
     return i;
@@ -847,7 +849,7 @@ static __always_inline int _parse_hdr_from(const struct msg_ctx *ctx, u16 start,
 
 // Reads the header block of a HEADERS or a CONTINUATION frame.
 //
-// Returns the offset it stopped at, see `_parse_hdr_from`.
+// Returns the offset it stopped at, or a negative errno from `_parse_hdr_from`.
 static __always_inline int _parse_hdr_frame(const struct msg_ctx *ctx, u16 start, u16 end, u8 type, u8 flags, struct http_parse_res *pres, struct null_prefix *null_prefix) {
     struct dynamic_table_info *dt_info = _get_dynamic_table(&ctx->conn);
     if (!dt_info) return start;
@@ -864,6 +866,10 @@ static __always_inline int _parse_hdr_frame(const struct msg_ctx *ctx, u16 start
     }
 
     int res = _parse_hdr_from(ctx, start, end, dt_info, &ps, pres, null_prefix);
+    if (res < 0) {
+        bpf_map_delete_elem(&continued_blocks, &ctx->conn);
+        return res;
+    }
 
     if ((flags & HTTP2_END_HEADERS_FLAG) != 0) {
         bpf_map_delete_elem(&continued_blocks, &ctx->conn);
@@ -931,6 +937,7 @@ static __always_inline int _parse_frame(const struct msg_ctx *ctx, u32 off, u32 
 
     frame->dt_count = dt_info ? dt_info->count : 0;
 
+    if (res < 0) return res;
     return (res < end) ? -EINVAL : 0;
 }
 
